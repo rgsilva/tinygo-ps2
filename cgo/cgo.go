@@ -17,6 +17,7 @@ import (
 	"go/parser"
 	"go/scanner"
 	"go/token"
+	"os"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -363,6 +364,16 @@ func Process(files []*ast.File, dir, importPath string, fset *token.FileSet, cfl
 			cgoHeader += fragment
 		}
 
+		cGoCFlags := os.Getenv("CGO_CFLAGS")
+		if cGoCFlags != "" {
+			flags, err := shlex.Split(cGoCFlags)
+			if err != nil {
+				panic(err.Error())
+			}
+			p.makePathsAbsolute(flags)
+
+			p.cflags = append(p.cflags, flags...)
+		}
 		p.cgoHeaders[i] = cgoHeader
 	}
 
