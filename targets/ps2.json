@@ -1,0 +1,22 @@
+{
+	"llvm-target": "mipsel-unknown-unknown",
+	"cpu": "mips3",
+	"features": "-noabicalls,+single-float",
+	"build-tags": ["ps2", "baremetal", "mipsel"],
+	"goos": "linux",
+	"goarch": "mipsle",
+	"linker": "ld.lld",
+	"rtlib": "compiler-rt",
+	"libc": "",
+	"cflags": [
+		"-mabi=n32",
+		"-mno-ldc1-sdc1"
+	],
+	"ldflags": [
+		"-mabi=n32"
+	],
+	"linkerscript": "",
+	"extra-files": [
+	],
+	"gdb": []
+}

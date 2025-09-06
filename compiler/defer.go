@@ -35,6 +35,10 @@ func (b *builder) supportsRecover() bool {
 	case "xtensa":
 		// TODO: add support for these architectures
 		return false
+	case "mips64el":
+		return false
+	case "mips":
+		return false
 	default:
 		return true
 	}
@@ -211,7 +215,7 @@ addiu $$ra, 8
 sw $$ra, 4($$5)
 .set at`
 		constraints = "={$4},{$5},~{$1},~{$2},~{$3},~{$5},~{$6},~{$7},~{$8},~{$9},~{$10},~{$11},~{$12},~{$13},~{$14},~{$15},~{$16},~{$17},~{$18},~{$19},~{$20},~{$21},~{$22},~{$23},~{$24},~{$25},~{$26},~{$27},~{$28},~{$29},~{$30},~{$31},~{memory}"
-		if !strings.Contains(b.Features, "+soft-float") {
+		if !strings.Contains(b.Features, "+soft-float") && !strings.Contains(b.Features, "+single-float") {
 			// Using floating point registers together with GOMIPS=softfloat
 			// results in a crash: "This value type is not natively supported!"
 			// So only add them when using hardfloat.

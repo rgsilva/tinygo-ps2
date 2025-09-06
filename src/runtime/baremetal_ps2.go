@@ -1,37 +1,59 @@
-//go:build baremetal && !ps2
-
-// TODO PS2: handle this
+//go:build ps2
 
 package runtime
 
+import "C"
 import (
-	"sync/atomic"
 	"unsafe"
 )
 
-//export malloc
-func libc_malloc(size uintptr) unsafe.Pointer {
-	// Note: this zeroes the returned buffer which is not necessary.
-	// The same goes for bytealg.MakeNoZero.
-	return alloc(size, nil)
+//go:extern _heap_start
+var heapStartSymbol [0]byte
+
+//go:extern _heap_end
+var heapEndSymbol [0]byte
+
+//go:extern _fdata
+var globalsStartSymbol [0]byte
+
+//go:extern _edata
+var globalsEndSymbol [0]byte
+
+//go:extern _stack_top
+var stackTopSymbol [0]byte
+
+var (
+	heapStart    = uintptr(unsafe.Pointer(&heapStartSymbol))
+	heapEnd      = uintptr(unsafe.Pointer(&heapEndSymbol))
+	globalsStart = uintptr(unsafe.Pointer(&globalsStartSymbol))
+	globalsEnd   = uintptr(unsafe.Pointer(&globalsEndSymbol))
+	stackTop     = uintptr(unsafe.Pointer(&stackTopSymbol))
+)
+
+var (
+	HeapStart    uintptr
+	HeapEnd      uintptr
+	GlobalsStart uintptr
+	GlobalsEnd   uintptr
+	StackTop     uintptr
+)
+
+// growHeap tries to grow the heap size. It returns true if it succeeds, false
+// otherwise.
+func growHeap() bool {
+	// On baremetal, there is no way the heap can be grown.
+	return false
 }
 
-//export calloc
-func libc_calloc(nmemb, size uintptr) unsafe.Pointer {
-	// No difference between calloc and malloc.
-	return libc_malloc(nmemb * size)
-}
-
-//export free
-func libc_free(ptr unsafe.Pointer) {
-	free(ptr)
-}
-
+// TODO: this
+//
 //export runtime_putchar
 func runtime_putchar(c byte) {
 	putchar(c)
 }
 
+// TODO: this
+//
 //go:linkname syscall_Exit syscall.Exit
 func syscall_Exit(code int) {
 	exit(code)
@@ -42,14 +64,13 @@ const baremetal = true
 // timeOffset is how long the monotonic clock started after the Unix epoch. It
 // should be a positive integer under normal operation or zero when it has not
 // been set.
-var timeOffset atomic.Int64
+var timeOffset int64
 
 //go:linkname now time.now
 func now() (sec int64, nsec int32, mono int64) {
 	mono = nanotime()
-	to := timeOffset.Load()
-	sec = (mono + to) / (1000 * 1000 * 1000)
-	nsec = int32((mono + to) - sec*(1000*1000*1000))
+	sec = (mono + timeOffset) / (1000 * 1000 * 1000)
+	nsec = int32((mono + timeOffset) - sec*(1000*1000*1000))
 	return
 }
 
@@ -57,7 +78,8 @@ func now() (sec int64, nsec int32, mono int64) {
 // positive value adds to the time (skipping some time), a negative value moves
 // the clock into the past.
 func AdjustTimeOffset(offset int64) {
-	timeOffset.Add(offset)
+	// TODO: do this atomically?
+	timeOffset += offset
 }
 
 // Picolibc is not configured to define its own errno value, instead it calls
