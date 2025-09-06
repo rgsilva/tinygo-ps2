@@ -1,9 +1,8 @@
-//go:build baremetal && !ps2
-
-// TODO PS2: handle this
+//go:build ps2
 
 package runtime
 
+import "C"
 import (
 	"unsafe"
 )
@@ -14,10 +13,10 @@ var heapStartSymbol [0]byte
 //go:extern _heap_end
 var heapEndSymbol [0]byte
 
-//go:extern _globals_start
+//go:extern _fdata
 var globalsStartSymbol [0]byte
 
-//go:extern _globals_end
+//go:extern _edata
 var globalsEndSymbol [0]byte
 
 //go:extern _stack_top
@@ -31,6 +30,14 @@ var (
 	stackTop     = uintptr(unsafe.Pointer(&stackTopSymbol))
 )
 
+var (
+	HeapStart    uintptr
+	HeapEnd      uintptr
+	GlobalsStart uintptr
+	GlobalsEnd   uintptr
+	StackTop     uintptr
+)
+
 // growHeap tries to grow the heap size. It returns true if it succeeds, false
 // otherwise.
 func growHeap() bool {
@@ -38,29 +45,15 @@ func growHeap() bool {
 	return false
 }
 
-//export malloc
-func libc_malloc(size uintptr) unsafe.Pointer {
-	// Note: this zeroes the returned buffer which is not necessary.
-	// The same goes for bytealg.MakeNoZero.
-	return alloc(size, nil)
-}
-
-//export calloc
-func libc_calloc(nmemb, size uintptr) unsafe.Pointer {
-	// No difference between calloc and malloc.
-	return libc_malloc(nmemb * size)
-}
-
-//export free
-func libc_free(ptr unsafe.Pointer) {
-	free(ptr)
-}
-
+// TODO: this
+//
 //export runtime_putchar
 func runtime_putchar(c byte) {
 	putchar(c)
 }
 
+// TODO: this
+//
 //go:linkname syscall_Exit syscall.Exit
 func syscall_Exit(code int) {
 	exit(code)
