@@ -1,6 +1,6 @@
 {
 	"llvm-target": "mipsel-unknown-unknown",
-	"cpu": "mips3",
+	"cpu": "r5900",
 	"features": "-noabicalls,+single-float",
 	"build-tags": ["ps2", "baremetal", "mipsel"],
 	"goos": "linux",
@@ -9,8 +9,7 @@
 	"rtlib": "compiler-rt",
 	"libc": "",
 	"cflags": [
-		"-mabi=n32",
-		"-mno-ldc1-sdc1"
+		"-mabi=n32"
 	],
 	"ldflags": [
 		"-mabi=n32"
