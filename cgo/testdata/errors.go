@@ -10,6 +10,12 @@ typedef struct {
 
 typedef someType noType; // undefined type
 
+// Packing that moves a field off its natural alignment is not supported.
+struct packed_bad {
+	char a;
+	short b;
+} __attribute__((packed));
+
 // Some invalid noescape lines
 #cgo noescape
 #cgo noescape foo bar
@@ -65,3 +71,6 @@ var (
 	_ = C.add_toomuch
 	_ = C.add_toolittle
 )
+
+// Packed struct with an unaligned field.
+var _ C.struct_packed_bad

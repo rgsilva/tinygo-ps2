@@ -1,16 +1,17 @@
 // CGo errors:
-//     testdata/errors.go:14:1: missing function name in #cgo noescape line
-//     testdata/errors.go:15:1: multiple function names in #cgo noescape line
+//     testdata/errors.go:20:1: missing function name in #cgo noescape line
+//     testdata/errors.go:21:1: multiple function names in #cgo noescape line
 //     testdata/errors.go:4:2: warning: some warning
 //     testdata/errors.go:11:9: error: unknown type name 'someType'
-//     testdata/errors.go:31:5: warning: another warning
-//     testdata/errors.go:18:23: unexpected token ), expected end of expression
-//     testdata/errors.go:26:26: unexpected token ), expected end of expression
-//     testdata/errors.go:21:33: unexpected token ), expected end of expression
-//     testdata/errors.go:22:34: unexpected token ), expected end of expression
+//     testdata/errors.go:37:5: warning: another warning
+//     testdata/errors.go:24:23: unexpected token ), expected end of expression
+//     testdata/errors.go:32:26: unexpected token ), expected end of expression
+//     testdata/errors.go:27:33: unexpected token ), expected end of expression
+//     testdata/errors.go:28:34: unexpected token ), expected end of expression
 //     -: unexpected token INT, expected end of expression
-//     testdata/errors.go:35:35: unexpected number of parameters: expected 2, got 3
-//     testdata/errors.go:36:31: unexpected number of parameters: expected 2, got 1
+//     testdata/errors.go:41:35: unexpected number of parameters: expected 2, got 3
+//     testdata/errors.go:42:31: unexpected number of parameters: expected 2, got 1
+//     testdata/errors.go:16:8: field b is not naturally aligned (packed struct?), which is not supported
 //     testdata/errors.go:3:1: function "unusedFunction" in #cgo noescape line is not used
 
 // Type checking errors after CGo processing:
@@ -87,3 +88,5 @@ type _Cgo_point_t = _Cgo_struct_point_t
 
 const _Cgo_SOME_CONST_3 = 1234
 const _Cgo_SOME_PARAM_CONST_valid = 3 + 4
+
+type _Cgo_struct_packed_bad struct{ a _Cgo_char }

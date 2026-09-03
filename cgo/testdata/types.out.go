@@ -164,3 +164,8 @@ func (s *_Cgo_struct_bitfield_t) set_bitfield_c(value _Cgo_uchar,
 ) { s.__bitfield_1 = s.__bitfield_1&0x3f | value<<6 }
 
 type _Cgo_bitfield_t = _Cgo_struct_bitfield_t
+type _Cgo_struct_packed_ok struct {
+	a _Cgo_uchar
+	b _Cgo_uchar
+	c _Cgo_ushort
+}

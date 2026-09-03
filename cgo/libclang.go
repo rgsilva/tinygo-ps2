@@ -1020,6 +1020,12 @@ func tinygo_clang_struct_visitor(c, parent C.GoCXCursor, client_data C.CXClientD
 		// Ignore. The next field will be the struct/union itself.
 		return C.CXChildVisit_Continue
 	default:
+		if C.clang_isAttribute(cursorKind) != 0 {
+			// Attributes such as __attribute__((packed)) or aligned(N).
+			// The layout they produce is what libclang reports, and a field
+			// that ends up unaligned is rejected below.
+			return C.CXChildVisit_Continue
+		}
 		cursorKindSpelling := getString(C.clang_getCursorKindSpelling(cursorKind))
 		f.addError(pos, fmt.Sprintf("expected FieldDecl in struct or union, not %s", cursorKindSpelling))
 		return C.CXChildVisit_Continue
@@ -1039,7 +1045,7 @@ func tinygo_clang_struct_visitor(c, parent C.GoCXCursor, client_data C.CXClientD
 	bitfieldOffset := offsetof % alignOf
 	if bitfieldOffset != 0 {
 		if C.tinygo_clang_Cursor_isBitField(c) != 1 {
-			f.addError(pos, "expected a bitfield")
+			f.addError(pos, "field "+name+" is not naturally aligned (packed struct?), which is not supported")
 			return C.CXChildVisit_Continue
 		}
 		if !*inBitfield {

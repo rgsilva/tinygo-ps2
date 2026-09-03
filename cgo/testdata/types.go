@@ -27,6 +27,14 @@ struct type2 {
 	int _type;
 };
 
+// A packed struct whose fields are naturally aligned anyway: the attribute
+// must be ignored, not rejected.
+struct packed_ok {
+	unsigned char a;
+	unsigned char b;
+	unsigned short c;
+} __attribute__((packed));
+
 // Unions.
 typedef union {
 	// Union should be treated as a struct.
@@ -171,3 +179,6 @@ func accessUnion() {
 	var _ *C.int = union2d.unionfield_i()
 	var _ *[2]float64 = union2d.unionfield_d()
 }
+
+// Packed struct with naturally aligned fields.
+var _ C.struct_packed_ok
