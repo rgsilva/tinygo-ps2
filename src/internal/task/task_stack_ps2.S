@@ -10,11 +10,12 @@
 //     crt0, so leaving it alone preserves it (saving it would load 0 from
 //     the initial frame of a new goroutine).
 // The frame layout must match calleeSavedRegs in task_stack_ps2.go.
-//
-// NOTE: the ps2go demos pipeline links its own copy of this file
-// (loader/asm_mipsx.S); keep both in sync.
 
 .set noreorder
+
+// tinygo_task_exit only exists with a scheduler; weak so that a
+// -scheduler=none build (which never runs this code) still links.
+.weak tinygo_task_exit
 
 .section .text.tinygo_startTask
 .global  tinygo_startTask
@@ -94,11 +95,3 @@ tinygo_swapTask:
     jr    $ra
     nop
 
-.section .text.tinygo_getsp
-.global  tinygo_getsp
-.type    tinygo_getsp, %function
-tinygo_getsp:
-    // Return the caller's stack pointer (used by the GC stack scrub in
-    // src/runtime/gc_stack_ps2.go).
-    jr    $ra
-    move  $v0, $sp

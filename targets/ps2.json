@@ -21,6 +21,8 @@
 	],
 	"linkerscript": "",
 	"extra-files": [
+		"src/runtime/asm_ps2.S",
+		"src/internal/task/task_stack_ps2.S"
 	],
 	"gdb": []
 }
