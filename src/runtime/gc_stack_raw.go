@@ -1,4 +1,4 @@
-//go:build (gc.conservative || gc.precise || gc.boehm) && !tinygo.wasm && !scheduler.threads && !scheduler.cores && !ps2
+//go:build (gc.conservative || gc.precise || gc.boehm) && !tinygo.wasm && !scheduler.threads && !scheduler.cores
 
 package runtime
 
@@ -44,6 +44,7 @@ func scanstack(sp uintptr) {
 		markRoots(sp, stackTop)
 	} else {
 		// This is a goroutine stack.
+		scrubDeadStack()
 		markCurrentGoroutineStack(sp)
 	}
 }
