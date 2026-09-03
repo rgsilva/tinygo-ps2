@@ -30,6 +30,18 @@ var embedPacked []byte
 //go:embed pragma-embed.txt
 var embedAligned []byte
 
+// Pragmas inside a var ( ... ) group apply to their own spec.
+var (
+	//go:align 32
+	groupedAligned [4]uint32
+
+	groupedPlain [4]uint32
+
+	//go:align 16
+	//go:embed pragma-embed.txt
+	groupedEmbed []byte
+)
+
 // Test exported functions.
 //
 //export extern_func

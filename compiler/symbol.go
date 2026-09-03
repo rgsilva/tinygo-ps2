@@ -772,16 +772,24 @@ func (c *compilerContext) loadASTComments(pkg *loader.Package) {
 			case *ast.GenDecl:
 				switch decl.Tok {
 				case token.VAR:
-					if len(decl.Specs) != 1 {
-						continue
-					}
 					for _, spec := range decl.Specs {
-						switch spec := spec.(type) {
-						case *ast.ValueSpec: // decl.Tok == token.VAR
-							for _, name := range spec.Names {
-								id := pkg.Pkg.Path() + "." + name.Name
-								c.astComments[id] = decl.Doc
-							}
+						spec, ok := spec.(*ast.ValueSpec) // decl.Tok == token.VAR
+						if !ok {
+							continue
+						}
+						// A standalone `var x` carries its comment on the
+						// declaration; inside a var ( ... ) group each spec
+						// has its own.
+						doc := spec.Doc
+						if doc == nil && len(decl.Specs) == 1 {
+							doc = decl.Doc
+						}
+						if doc == nil {
+							continue
+						}
+						for _, name := range spec.Names {
+							id := pkg.Pkg.Path() + "." + name.Name
+							c.astComments[id] = doc
 						}
 					}
 				}
