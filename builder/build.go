@@ -1242,6 +1242,12 @@ func optimizeProgram(mod llvm.Module, config *compileopts.Config) error {
 		return errors.New("verification failure after LLVM optimization passes")
 	}
 
+	// Keep pointer-free globals out of the conservative globals scan, on
+	// targets that ask for it (see TargetSpec.GCNoPtrSection).
+	if section := config.Target.GCNoPtrSection; section != "" {
+		transform.MoveNoPointerGlobals(mod, section)
+	}
+
 	return nil
 }
 
