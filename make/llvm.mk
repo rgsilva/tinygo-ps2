@@ -75,13 +75,14 @@ endif
     CGO_LDFLAGS+=-L$(abspath $(LLVM_BUILDDIR)/lib) -lclang $(CLANG_LIBS) $(LLD_LIBS) $(shell $(LLVM_CONFIG_PREFIX) $(LLVM_BUILDDIR)/bin/llvm-config --ldflags --libs --system-libs $(LLVM_COMPONENTS)) -lstdc++ $(CGO_LDFLAGS_EXTRA)
 endif
 
-# Pinned in llvm-version.txt. Branch tinygo_22.x of tinygo-org/llvm-project.
+# Pinned in llvm-version.txt. Branch ps2/tinygo_22.x of rgsilva/tinygo-ps2-llvm
+# (tinygo-org/llvm-project tinygo_22.x plus the R5900 processor).
 LLVM_REVISION = $(shell cat llvm-version.txt)
 
 $(LLVM_PROJECTDIR)/llvm:
 	git init $(LLVM_PROJECTDIR)
 	cd $(LLVM_PROJECTDIR) && \
-	  git remote add origin https://github.com/tinygo-org/llvm-project && \
+	  git remote add origin https://github.com/rgsilva/tinygo-ps2-llvm && \
 	  git fetch --depth=1 origin $(LLVM_REVISION) && \
 	  git checkout FETCH_HEAD
 llvm-source: $(LLVM_PROJECTDIR)/llvm ## Get LLVM sources
