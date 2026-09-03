@@ -1,53 +1,24 @@
 //go:build ps2
 
+// What baremetal.go provides for other targets, minus the malloc/calloc/free
+// exports: on the PS2 the C heap belongs to the ps2sdk libc (newlib), whose
+// allocator cannot be replaced without symbol clashes.
+
 package runtime
 
 import "C"
 import (
 	"sync/atomic"
-	"unsafe"
 )
 
-//go:extern _heap_start
-var heapStartSymbol [0]byte
-
-//go:extern _heap_end
-var heapEndSymbol [0]byte
-
-//go:extern _fdata
-var globalsStartSymbol [0]byte
-
-// Globals span .data, .sdata and .bss: _fdata up to _end. Stopping at
-// _edata would leave every zero-initialized global unscanned.
-//
-//go:extern _end
-var globalsEndSymbol [0]byte
-
-//go:extern _stack_top
-var stackTopSymbol [0]byte
-
+// The heap and stack bounds come from baremetal_memory.go (linker symbols
+// _heap_start, _heap_end, _globals_start, _globals_end, _stack_top, provided
+// by the ps2 link flags). preinit replaces the heap bounds with a block from
+// the ps2sdk libc heap; these exported copies let tools report them.
 var (
-	heapStart    = uintptr(unsafe.Pointer(&heapStartSymbol))
-	heapEnd      = uintptr(unsafe.Pointer(&heapEndSymbol))
-	globalsStart = uintptr(unsafe.Pointer(&globalsStartSymbol))
-	globalsEnd   = uintptr(unsafe.Pointer(&globalsEndSymbol))
-	stackTop     = uintptr(unsafe.Pointer(&stackTopSymbol))
+	HeapStart uintptr
+	HeapEnd   uintptr
 )
-
-var (
-	HeapStart    uintptr
-	HeapEnd      uintptr
-	GlobalsStart uintptr
-	GlobalsEnd   uintptr
-	StackTop     uintptr
-)
-
-// growHeap tries to grow the heap size. It returns true if it succeeds, false
-// otherwise.
-func growHeap() bool {
-	// On baremetal, there is no way the heap can be grown.
-	return false
-}
 
 //export runtime_putchar
 func runtime_putchar(c byte) {

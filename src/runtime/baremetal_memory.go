@@ -1,4 +1,4 @@
-//go:build baremetal && !uefi && !ps2
+//go:build baremetal && !uefi
 
 package runtime
 
