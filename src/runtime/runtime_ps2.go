@@ -97,6 +97,11 @@ const (
 	memSize = uint(24 * 1024 * 1024)
 )
 
+// Address handed out for zero-size allocations; must never be dereferenced.
+// Low memory belongs to the kernel (exception vectors), which is never a Go
+// object.
+const zeroSizeAllocPtr uintptr = 16
+
 var (
 	goMemoryAddr uintptr
 )
