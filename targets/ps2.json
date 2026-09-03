@@ -5,6 +5,8 @@
 	"build-tags": ["ps2", "baremetal", "mipsel"],
 	"goos": "linux",
 	"goarch": "mipsle",
+	"scheduler": "tasks",
+	"default-stack-size": 65536,
 	"linker": "ld.lld",
 	"rtlib": "compiler-rt",
 	"libc": "",

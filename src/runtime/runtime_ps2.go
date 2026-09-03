@@ -9,7 +9,30 @@ package runtime
 extern unsigned long long GetTimerSystemTime(void);
 
 extern void _exit(int status);
-extern void SleepThread(void);
+extern int SleepThread(void);
+extern int GetThreadId(void);
+extern int iWakeupThread(int thread_id);
+extern int SetTimerAlarm(unsigned long long clock_cycles, unsigned long long (*handler)(int, unsigned long long, unsigned long long, void *, void *), void *arg);
+extern int ReleaseTimerAlarm(int id);
+
+// Timer alarm handler used by sleepTicks. It runs in interrupt context, so
+// it does nothing but wake the thread that armed it (no Go code here).
+static unsigned long long ps2go_wake(int id, unsigned long long scheduled, unsigned long long actual, void *arg, void *pc) {
+	iWakeupThread((int)(long)arg);
+	return 0;
+}
+
+// Sleep the current EE thread for the given number of bus clock cycles using
+// a one-shot timer alarm. Returns non-zero if no alarm could be armed.
+static int ps2go_sleep_alarm(unsigned long long cycles) {
+	int id = SetTimerAlarm(cycles, ps2go_wake, (void *)(long)GetThreadId());
+	if (id < 0) {
+		return id;
+	}
+	SleepThread();
+	ReleaseTimerAlarm(id);
+	return 0;
+}
 extern void* malloc(unsigned int size);
 extern void free(void *ptr);
 extern void sio_init(unsigned int baudrate, unsigned char lcr_ueps, unsigned char lcr_upen, unsigned char lcr_usbl, unsigned char lcr_umode);
@@ -71,11 +94,26 @@ func nanosecondsToTicks(ns int64) timeUnit {
 	return timeUnit(ns/1e9*busClockHz + (ns%1e9)*busClockHz/1e9)
 }
 
-// sleepTicks waits by polling the system timer. Without a scheduler there is
-// nothing else to run; with one this should become SetTimerAlarm+SleepThread.
+// sleepTicks waits for d bus clock cycles. The scheduler calls it on the
+// system stack when no goroutine is runnable. Short waits spin; longer ones
+// arm a timer alarm that wakes this EE thread and sleep the thread, so the
+// CPU idles instead of polling. The loop guards against an early wakeup.
 func sleepTicks(d timeUnit) {
+	const spinThreshold = 2000 // ~14 us
 	end := ticks() + d
-	for ticks() < end {
+	for {
+		now := ticks()
+		if now >= end {
+			return
+		}
+		remaining := end - now
+		if remaining < spinThreshold {
+			continue
+		}
+		if C.ps2go_sleep_alarm(C.ulonglong(remaining)) != 0 {
+			// No alarm available: fall back to polling.
+			continue
+		}
 	}
 }
 

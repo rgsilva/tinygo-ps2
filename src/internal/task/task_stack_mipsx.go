@@ -1,4 +1,4 @@
-//go:build scheduler.tasks && (mips || mipsle)
+//go:build scheduler.tasks && (mips || mipsle) && !ps2
 
 package task
 
