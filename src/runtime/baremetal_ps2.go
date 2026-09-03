@@ -16,7 +16,10 @@ var heapEndSymbol [0]byte
 //go:extern _fdata
 var globalsStartSymbol [0]byte
 
-//go:extern _edata
+// Globals span .data, .sdata and .bss: _fdata up to _end. Stopping at
+// _edata would leave every zero-initialized global unscanned.
+//
+//go:extern _end
 var globalsEndSymbol [0]byte
 
 //go:extern _stack_top
