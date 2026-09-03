@@ -142,6 +142,14 @@ var (
 	goMemoryAddr uintptr
 )
 
+// preinit replaces the heap bounds from baremetal_memory.go (linker symbols)
+// with a block from the ps2sdk libc heap; these exported copies let tools and
+// tests report them.
+var (
+	HeapStart uintptr
+	HeapEnd   uintptr
+)
+
 func preinit() {
 	// NOTE: no need to clear .bss and other memory areas as crt0 is already doing that in __start.
 
