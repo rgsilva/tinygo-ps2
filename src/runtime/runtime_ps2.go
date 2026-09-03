@@ -3,7 +3,10 @@
 package runtime
 
 /*
-extern unsigned int GetTimerCounter(int);
+// ps2sdk system timer: 64-bit count of EE bus clock cycles (147.456 MHz),
+// kept by libkernel with the T2 overflow interrupt. Referencing it makes
+// crt0's _InitSys start the timer (weak _ps2sdk_init_timer hook).
+extern unsigned long long GetTimerSystemTime(void);
 
 extern void _exit(int status);
 extern void* malloc(unsigned int size);
@@ -68,21 +71,30 @@ func abort() {
 	}
 }
 
+// timeUnit is EE bus clock cycles, as counted by GetTimerSystemTime.
+const busClockHz = 147456000
+
+// The conversions split the value so that the multiplication never overflows
+// int64 (ticks*1e9 would after about a minute).
 func ticksToNanoseconds(ticks timeUnit) int64 {
-	return int64(ticks)
+	t := int64(ticks)
+	return t/busClockHz*1e9 + (t%busClockHz)*1e9/busClockHz
 }
 
 func nanosecondsToTicks(ns int64) timeUnit {
-	return timeUnit(ns)
+	return timeUnit(ns/1e9*busClockHz + (ns%1e9)*busClockHz/1e9)
 }
 
-// Sleep this number of ticks of nanoseconds.
+// sleepTicks waits by polling the system timer. Without a scheduler there is
+// nothing else to run; with one this should become SetTimerAlarm+SleepThread.
 func sleepTicks(d timeUnit) {
-	// TODO
+	end := ticks() + d
+	for ticks() < end {
+	}
 }
 
-func ticks() (ticksReturn timeUnit) {
-	return 0
+func ticks() timeUnit {
+	return timeUnit(C.GetTimerSystemTime())
 }
 
 //export main
