@@ -35,10 +35,6 @@ func (b *builder) supportsRecover() bool {
 	case "xtensa":
 		// TODO: add support for these architectures
 		return false
-	case "mips64el":
-		return false
-	case "mips":
-		return false
 	default:
 		return true
 	}
@@ -203,9 +199,11 @@ std z+5, r29
 ldi r24, 0
 1:`
 		constraints = "={r24},z,~{r0},~{r2},~{r3},~{r4},~{r5},~{r6},~{r7},~{r8},~{r9},~{r10},~{r11},~{r12},~{r13},~{r14},~{r15},~{r16},~{r17},~{r18},~{r19},~{r20},~{r21},~{r22},~{r23},~{r25},~{r26},~{r27}"
-	case "mips":
+	case "mips", "mips64el":
 		// $4 flag (zero or non-zero)
 		// $5 defer frame
+		// The same sequence serves N32 (mips64el-*-gnuabin32): pointers are
+		// 32 bits wide, so the return address is stored with sw.
 		asmString = `
 .set noat
 move $$4, $$zero
@@ -215,10 +213,11 @@ addiu $$ra, 8
 sw $$ra, 4($$5)
 .set at`
 		constraints = "={$4},{$5},~{$1},~{$2},~{$3},~{$5},~{$6},~{$7},~{$8},~{$9},~{$10},~{$11},~{$12},~{$13},~{$14},~{$15},~{$16},~{$17},~{$18},~{$19},~{$20},~{$21},~{$22},~{$23},~{$24},~{$25},~{$26},~{$27},~{$28},~{$29},~{$30},~{$31},~{memory}"
-		if !strings.Contains(b.Features, "+soft-float") && !strings.Contains(b.Features, "+single-float") {
+		if !strings.Contains(b.Features, "+soft-float") {
 			// Using floating point registers together with GOMIPS=softfloat
 			// results in a crash: "This value type is not natively supported!"
-			// So only add them when using hardfloat.
+			// So only add them when using hardfloat (single-float included:
+			// all 32 registers exist as single-precision registers there).
 			constraints += ",~{$f0},~{$f1},~{$f2},~{$f3},~{$f4},~{$f5},~{$f6},~{$f7},~{$f8},~{$f9},~{$f10},~{$f11},~{$f12},~{$f13},~{$f14},~{$f15},~{$f16},~{$f17},~{$f18},~{$f19},~{$f20},~{$f21},~{$f22},~{$f23},~{$f24},~{$f25},~{$f26},~{$f27},~{$f28},~{$f29},~{$f30},~{$f31}"
 		}
 	case "riscv32", "riscv64":
