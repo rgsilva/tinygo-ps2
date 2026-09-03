@@ -149,12 +149,16 @@ func preinit() {
 	// a proper malloc before proceeding. This guarantees that the heap location is ours. We will
 	// need to free it later on though.
 
+	initUART()
 	goMemoryAddr = uintptr(unsafe.Pointer(C.malloc(C.uint(memSize))))
+	if goMemoryAddr == 0 {
+		printstring("runtime: cannot allocate the Go heap from the libc heap\n")
+		abort()
+	}
 	heapStart = goMemoryAddr
 	heapEnd = goMemoryAddr + uintptr(memSize)
 	HeapStart = heapStart
 	HeapEnd = heapEnd
-	initUART()
 }
 
 func preexit() {

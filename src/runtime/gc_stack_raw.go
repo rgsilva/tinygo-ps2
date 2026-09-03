@@ -1,4 +1,4 @@
-//go:build (gc.conservative || gc.precise || gc.boehm) && !tinygo.wasm && !scheduler.threads && !scheduler.cores
+//go:build (gc.conservative || gc.precise || gc.boehm) && !tinygo.wasm && !scheduler.threads && !scheduler.cores && !ps2
 
 package runtime
 

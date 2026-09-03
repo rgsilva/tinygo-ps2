@@ -69,3 +69,14 @@ func (s *state) pause() {
 func SystemStack() uintptr {
 	return systemStack
 }
+
+// CurrentStackBottom returns the lowest address of the running goroutine's
+// stack (the canary word), or 0 on the system stack. The GC uses it to wipe
+// the unused part of the stack before scanning it conservatively.
+func CurrentStackBottom() uintptr {
+	t := Current()
+	if t == nil {
+		return 0
+	}
+	return uintptr(unsafe.Pointer(t.state.canaryPtr))
+}

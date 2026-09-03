@@ -7,6 +7,7 @@
 	"goarch": "mipsle",
 	"scheduler": "tasks",
 	"default-stack-size": 65536,
+	"gc-noptr-section": ".ps2go.noscan",
 	"linker": "ld.lld",
 	"rtlib": "compiler-rt",
 	"libc": "",
