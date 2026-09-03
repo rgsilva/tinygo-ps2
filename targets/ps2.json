@@ -9,7 +9,9 @@
 	"rtlib": "compiler-rt",
 	"libc": "",
 	"cflags": [
-		"-mabi=n32"
+		"-mabi=n32",
+		"-mhard-float",
+		"-msingle-float"
 	],
 	"ldflags": [
 		"-mabi=n32"
