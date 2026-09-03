@@ -1,5 +1,5 @@
 {
-	"llvm-target": "mipsel-unknown-unknown",
+	"llvm-target": "mips64el-unknown-none-gnuabin32",
 	"cpu": "r5900",
 	"features": "-noabicalls,+single-float",
 	"build-tags": ["ps2", "baremetal", "mipsel"],
