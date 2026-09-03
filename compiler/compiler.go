@@ -1009,7 +1009,10 @@ func (c *compilerContext) createEmbedGlobal(member *ssa.Global, global llvm.Valu
 		bufferGlobal := llvm.AddGlobal(c.mod, bufferValue.Type(), c.pkg.Path()+"$embedslice")
 		bufferGlobal.SetInitializer(bufferValue)
 		bufferGlobal.SetLinkage(llvm.InternalLinkage)
-		bufferGlobal.SetAlignment(1)
+		// Pack the data by default; a //go:align on the variable applies to
+		// the data itself (that is what aligning an embedded file is for,
+		// e.g. a DMA source), the slice header does not need it.
+		bufferGlobal.SetAlignment(max(1, c.getGlobalInfo(member).align))
 		slicePtr := llvm.ConstInBoundsGEP(bufferValue.Type(), bufferGlobal, []llvm.Value{
 			llvm.ConstInt(c.uintptrType, 0, false),
 			llvm.ConstInt(c.uintptrType, 0, false),

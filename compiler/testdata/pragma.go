@@ -1,5 +1,7 @@
 package main
 
+import _ "embed"
+
 import _ "unsafe"
 
 // Creates an external global with name extern_global.
@@ -17,6 +19,16 @@ var alignedGlobal [4]uint32
 //go:align 64
 //go:align 16
 var alignedGlobal16 [4]uint32
+
+// An embedded file is packed (align 1) unless the variable asks for an
+// alignment, which then applies to the file data, not the slice header.
+//
+//go:embed pragma-embed.txt
+var embedPacked []byte
+
+//go:align 16
+//go:embed pragma-embed.txt
+var embedAligned []byte
 
 // Test exported functions.
 //
