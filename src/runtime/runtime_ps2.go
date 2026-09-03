@@ -8,7 +8,8 @@ extern unsigned int GetTimerCounter(int);
 extern void _exit(int status);
 extern void* malloc(unsigned int size);
 extern void free(void *ptr);
-extern void scr_printf(const char *format, ...);
+extern void sio_init(unsigned int baudrate, unsigned char lcr_ueps, unsigned char lcr_upen, unsigned char lcr_usbl, unsigned char lcr_umode);
+extern int sio_putc(int c);
 
 extern long __muldi3(long a, long b);
 
@@ -34,12 +35,13 @@ import "C"
 import "unsafe"
 
 func initUART() {
+	// The EE serial port (SIO). Emulators log it; on hardware it needs the
+	// debug connector. It works before the SIF/IOP is up, unlike printf.
+	C.sio_init(38400, 0, 0, 0, 0)
 }
 
 func putchar(c byte) {
-	x := C.CString(string(c))
-	C.scr_printf(x)
-	C.free(unsafe.Pointer(x))
+	C.sio_putc(C.int(c))
 }
 
 func getchar() byte {
@@ -109,6 +111,9 @@ func preinit() {
 	goMemoryAddr = uintptr(unsafe.Pointer(C.malloc(C.uint(memSize))))
 	heapStart = goMemoryAddr
 	heapEnd = goMemoryAddr + uintptr(memSize)
+	HeapStart = heapStart
+	HeapEnd = heapEnd
+	initUART()
 }
 
 func preexit() {
