@@ -54,7 +54,6 @@ var (
 	scanList      *objHeader     // scanList is a singly linked list of heap objects that have been marked but not scanned
 	freeRanges    *freeRange     // freeRanges is a linked list of free block ranges
 	endBlock      gcBlock        // the block just past the end of the available space
-	gcHighWater   gcBlock        // the block just past the highest one allocated since the last sweep
 	gcTotalAlloc  uint64         // total number of bytes allocated
 	gcMallocs     uint64         // total number of allocations
 	gcNumGC       uint32         // total number of completed collection cycles
@@ -85,66 +84,6 @@ const blockStateEach = 1<<blocksPerStateByte - 1
 
 // The byte value of a block where every block is a 'tail' block.
 const blockStateByteAllTails = byte(blockStateTail) * blockStateEach
-
-// The sweep looks at a whole state word at a time where it can (see sweep).
-const (
-	stateWordBlocks   = blocksPerStateByte * unsafe.Sizeof(uint32(0)) // blocks per state word
-	stateWordLowMask  = uint32(blockStateEach) * 0x01010101           // the low bit of every block
-	stateWordAllTails = uint32(blockStateByteAllTails) * 0x01010101
-)
-
-// stateWordBelow returns the state word covering the stateWordBlocks blocks
-// below b. b must be a multiple of stateWordBlocks.
-func (b gcBlock) stateWordBelow() *uint32 {
-	return (*uint32)(unsafe.Add(metadataStart, (b-gcBlock(stateWordBlocks))/blocksPerStateByte))
-}
-
-// The head index: for every group of blocksPerHeadGroup blocks, the offset of
-// the lowest head block in the group plus one (0: no head in the group). It
-// lets findHead skip whole groups instead of walking the tail blocks of a big
-// object one by one, which made a pointer into a big object very expensive.
-// It is kept exact: alloc records new heads, sweep rebuilds it from the
-// surviving ones, and blocks are only ever freed by sweep.
-const blocksPerHeadGroup = 512
-
-var headIndexStart unsafe.Pointer // right after the block states
-
-// findHead also remembers the last head it found and the lowest block it has
-// seen belonging to that object (blocks between are its tails): a program
-// holding many pointers into one big object hits this with a compare. Reset
-// by sweep, the only place that frees blocks.
-var (
-	headCacheHead gcBlock
-	headCacheLow  gcBlock
-	headCacheOK   bool
-)
-
-func headIndexEntry(g gcBlock) *uint16 {
-	return (*uint16)(unsafe.Add(headIndexStart, g*2))
-}
-
-// recordHead notes that b is a head block.
-func (b gcBlock) recordHead() {
-	e := headIndexEntry(b / blocksPerHeadGroup)
-	if off := uint16(b%blocksPerHeadGroup) + 1; *e == 0 || off < *e {
-		*e = off
-	}
-}
-
-// clearHeadIndex empties the head index (sweep rebuilds it).
-func clearHeadIndex() {
-	memzero(headIndexStart, (uintptr((endBlock+blocksPerHeadGroup-1)/blocksPerHeadGroup)*2+7)&^7)
-}
-
-// rebuildHeadIndex recomputes the head index from the block states.
-func rebuildHeadIndex() {
-	clearHeadIndex()
-	for b := gcBlock(0); b < endBlock; b++ {
-		if state := b.state(); state == blockStateHead || state == blockStateMark {
-			b.recordHead()
-		}
-	}
-}
 
 // String returns a human-readable version of the block state, for debugging.
 func (s blockState) String() string {
@@ -193,69 +132,29 @@ func (b gcBlock) address() uintptr {
 // points to an allocated object. It returns the same block if this block
 // already points to the head.
 func (b gcBlock) findHead() gcBlock {
-	if headCacheOK && b <= headCacheHead && b >= headCacheLow {
-		return headCacheHead
+	if gcIndexedSweep {
+		return b.findHeadIndexed()
 	}
-	start := b
+	for {
+		// Optimization: check whether the current block state byte (which
+		// contains the state of multiple blocks) is composed entirely of tail
+		// blocks. If so, we can skip back to the last block in the previous
+		// state byte.
+		// This optimization speeds up findHead for pointers that point into a
+		// large allocation.
+		stateByte := b.stateByte()
+		if stateByte == blockStateByteAllTails {
+			b += blocksPerStateByte - (b % blocksPerStateByte)
+			continue
+		}
 
-	// The lowest head in b's group is the one we want when it is at or above
-	// b: everything between is a tail.
-	g := b / blocksPerHeadGroup
-	if e := *headIndexEntry(g); e != 0 {
-		if h := g*blocksPerHeadGroup + gcBlock(e-1); h >= b {
-			b = h
-			goto found
+		// Check whether we've found a non-tail block, which means we found the
+		// head.
+		state := b.stateFromByte(stateByte)
+		if state != blockStateTail {
+			break
 		}
-	}
-
-	// Otherwise walk the rest of the group, then hop to the first group
-	// above that has a head.
-	{
-		end := (g + 1) * blocksPerHeadGroup
-		if end > endBlock {
-			end = endBlock
-		}
-		for b < end {
-			// A state word (or byte) holding only tail blocks is skipped at
-			// once.
-			if b%gcBlock(stateWordBlocks) == 0 && b+gcBlock(stateWordBlocks) <= end &&
-				*(b + gcBlock(stateWordBlocks)).stateWordBelow() == stateWordAllTails {
-				b += gcBlock(stateWordBlocks)
-				continue
-			}
-			stateByte := b.stateByte()
-			if stateByte == blockStateByteAllTails {
-				b += blocksPerStateByte - (b % blocksPerStateByte)
-				continue
-			}
-			if b.stateFromByte(stateByte) != blockStateTail {
-				goto found
-			}
-			b++
-		}
-		for g++; ; g++ {
-			if gcAsserts && g*blocksPerHeadGroup >= endBlock {
-				runtimeFatal("gc: found tail without head")
-			}
-			// Four empty groups at a time (the index is 8-byte aligned).
-			if g%4 == 0 && *(*uint64)(unsafe.Add(headIndexStart, g*2)) == 0 {
-				g += 3
-				continue
-			}
-			if e := *headIndexEntry(g); e != 0 {
-				b = g*blocksPerHeadGroup + gcBlock(e-1)
-				break
-			}
-		}
-	}
-
-found:
-	if headCacheOK && b == headCacheHead {
-		if start < headCacheLow {
-			headCacheLow = start
-		}
-	} else {
-		headCacheHead, headCacheLow, headCacheOK = b, start, true
+		b++
 	}
 	if gcAsserts {
 		if b.state() != blockStateHead && b.state() != blockStateMark {
@@ -452,10 +351,15 @@ func setHeapEnd(newHeapEnd uintptr) {
 	heapEnd = newHeapEnd
 	oldEndBlock := endBlock
 	calculateHeapAddresses()
-	// Copy the block states only: the head index that followed them would
-	// land in the (zero, free) states of the new blocks. It is rebuilt below.
-	memcpy(metadataStart, oldMetadataStart, (uintptr(oldEndBlock)+blocksPerStateByte-1)/blocksPerStateByte)
-	rebuildHeadIndex()
+	if gcIndexedSweep {
+		// Copy the block states only: the head index that followed them
+		// would land in the (zero, free) states of the new blocks. It is
+		// rebuilt from the states.
+		memcpy(metadataStart, oldMetadataStart, (uintptr(oldEndBlock)+blocksPerStateByte-1)/blocksPerStateByte)
+		rebuildHeadIndex()
+	} else {
+		memcpy(metadataStart, oldMetadataStart, oldMetadataSize)
+	}
 
 	// Note: the memcpy above assumes the heap grows enough so that the new
 	// metadata does not overlap the old metadata. If that isn't true, memmove
@@ -483,20 +387,23 @@ func setHeapEnd(newHeapEnd uintptr) {
 func calculateHeapAddresses() {
 	totalSize := heapEnd - heapStart
 
-	// Allocate some memory to keep 2 bits of information about every block,
-	// plus the head index (2 bytes per group of blocks).
+	// Allocate some memory to keep 2 bits of information about every block.
 	metadataSize := (totalSize + blocksPerStateByte*bytesPerBlock) / (1 + blocksPerStateByte*bytesPerBlock)
-	metadataSize += totalSize/(bytesPerBlock*blocksPerHeadGroup)*2 + 4*unsafe.Sizeof(uint64(0))
-	// 8-byte aligned so that the sweep and findHead can look at whole words
-	// of states and index entries at a time.
-	metadataStart = unsafe.Pointer((heapEnd - metadataSize) &^ 7)
+	if gcIndexedSweep {
+		metadataSize += headIndexSize(totalSize)
+	}
+	metadataStart = unsafe.Pointer(heapEnd - metadataSize)
+	if gcIndexedSweep {
+		// 8-byte aligned so that the sweep and findHead can look at whole
+		// words of states and index entries at a time.
+		metadataStart = unsafe.Pointer(uintptr(metadataStart) &^ 7)
+	}
 
 	// Use the rest of the available memory as heap.
 	numBlocks := (uintptr(metadataStart) - heapStart) / bytesPerBlock
 	endBlock = gcBlock(numBlocks)
-	headIndexStart = unsafe.Add(metadataStart, ((numBlocks+blocksPerStateByte-1)/blocksPerStateByte+7)&^7)
-	if gcAsserts && uintptr(headIndexStart)+((numBlocks+blocksPerHeadGroup-1)/blocksPerHeadGroup*2+7)&^7 > heapEnd {
-		runtimeFatal("gc: head index does not fit")
+	if gcIndexedSweep {
+		placeHeadIndex(numBlocks)
 	}
 	if gcDebug {
 		println("heapStart:        ", heapStart)
@@ -587,11 +494,8 @@ func alloc(size uintptr, layout unsafe.Pointer) unsafe.Pointer {
 	// Set the block states.
 	block := blockFromAddr(uintptr(pointer))
 	i := block + gcBlock(neededBlocks) - 1
-	if i+1 > gcHighWater {
-		gcHighWater = i + 1
-	}
 	i.setState(blockStateHead)
-	i.recordHead()
+	noteAllocatedHead(i)
 	for i != block {
 		i--
 		i.setState(blockStateTail)
@@ -848,40 +752,21 @@ func markRoot(addr, root uintptr) {
 
 // Sweep goes through all memory and frees unmarked memory.
 func sweep() uintptr {
+	if gcIndexedSweep {
+		return sweepIndexed()
+	}
+
 	// Discard the old free ranges list.
 	freeRanges = nil
 
-	// Scan backwards through the block metadata, starting below the highest
-	// block allocated since the last sweep: nothing above it has been touched
-	// (free ranges are best-fit and carved from their low end, so the big
-	// range at the top is used last), and that part joins the first free
-	// range without looking at its metadata. Whole state words are handled at
-	// once where possible. Together this keeps the cost of a collection
-	// proportional to what the program uses, not to the heap size.
-	block := gcHighWater
-	freeEnd := endBlock
+	// Scan backwards through the block metadata.
+	block := endBlock
 	var freeBlocks uintptr
-	clearHeadIndex() // rebuilt from the surviving heads below
-	headCacheOK = false
 	for {
 		// Scan backwards until we find a marked head.
 		// Free the blocks as we go.
-		for block > 0 {
-			if block%gcBlock(stateWordBlocks) == 0 && block >= gcBlock(stateWordBlocks) {
-				// A marked head has both of its bits set. If no block in this
-				// word has, all of them are freed (or already free) at once.
-				w := block.stateWordBelow()
-				if v := *w; v&(v>>blocksPerStateByte)&stateWordLowMask == 0 {
-					if v != 0 {
-						*w = 0
-					}
-					block -= gcBlock(stateWordBlocks)
-					continue
-				}
-			}
-			if (block - 1).state() == blockStateMark {
-				break
-			}
+		freeEnd := block
+		for block > 0 && (block-1).state() != blockStateMark {
 			block--
 			block.free()
 		}
@@ -890,11 +775,6 @@ func sweep() uintptr {
 			// Insert the freed blocks.
 			freeBlocks += freeLen
 			insertFreeRange(block.pointer(), freeLen)
-		}
-		if freeEnd == endBlock {
-			// The first free range found from the top: everything above the
-			// highest live object is free.
-			gcHighWater = block
 		}
 
 		if block == 0 {
@@ -905,21 +785,11 @@ func sweep() uintptr {
 		// Unmark the next head.
 		block--
 		block.unmark()
-		block.recordHead()
 
-		// Skip the tail, a word at a time inside big objects.
-		for block > 0 {
-			if block%gcBlock(stateWordBlocks) == 0 && block >= gcBlock(stateWordBlocks) &&
-				*block.stateWordBelow() == stateWordAllTails {
-				block -= gcBlock(stateWordBlocks)
-				continue
-			}
-			if (block - 1).state() != blockStateTail {
-				break
-			}
+		// Skip the tail.
+		for block > 0 && (block-1).state() == blockStateTail {
 			block--
 		}
-		freeEnd = block
 	}
 
 	if gcDebug {
