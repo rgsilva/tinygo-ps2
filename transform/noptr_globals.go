@@ -36,6 +36,27 @@ func MoveNoPointerGlobals(mod llvm.Module, section string) int {
 	return moved
 }
 
+// MoveScannedGlobals moves every remaining mutable global (one that may hold
+// a pointer, or that MoveNoPointerGlobals left alone) into the given section,
+// so that a linker script can bracket the range the GC scans for roots
+// without knowing the object's name. Run it after MoveNoPointerGlobals.
+// Declarations, constants, LLVM's own globals and globals that already have
+// a section are left alone.
+func MoveScannedGlobals(mod llvm.Module, section string) int {
+	moved := 0
+	for global := mod.FirstGlobal(); !global.IsNil(); global = llvm.NextGlobal(global) {
+		if global.IsDeclaration() || global.IsGlobalConstant() || global.Section() != "" {
+			continue
+		}
+		if len(global.Name()) > 5 && global.Name()[:5] == "llvm." {
+			continue
+		}
+		global.SetSection(section)
+		moved++
+	}
+	return moved
+}
+
 // typeMayContainPointer reports whether a value of this LLVM type can hold a
 // pointer anywhere inside it.
 func typeMayContainPointer(t llvm.Type) bool {

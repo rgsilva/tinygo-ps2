@@ -15,3 +15,13 @@ func TestMoveNoPointerGlobals(t *testing.T) {
 		}
 	})
 }
+
+func TestMoveScannedGlobals(t *testing.T) {
+	t.Parallel()
+	testTransform(t, "testdata/scanned-globals", func(mod llvm.Module) {
+		transform.MoveNoPointerGlobals(mod, ".noptr")
+		if n := transform.MoveScannedGlobals(mod, ".scan"); n != 3 {
+			t.Errorf("moved %d globals, want 3", n)
+		}
+	})
+}

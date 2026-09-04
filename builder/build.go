@@ -1276,6 +1276,9 @@ func optimizeProgram(mod llvm.Module, config *compileopts.Config) error {
 	if section := config.Target.GCNoPtrSection; section != "" {
 		transform.MoveNoPointerGlobals(mod, section)
 	}
+	if section := config.Target.GCGlobalsSection; section != "" {
+		transform.MoveScannedGlobals(mod, section)
+	}
 
 	return nil
 }
