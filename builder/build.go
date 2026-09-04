@@ -785,7 +785,7 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 		job := &compileJob{
 			description: "compile extra file " + path,
 			run: func(job *compileJob) error {
-				result, err := compileAndCacheCFile(abspath, tmpdir, config.CFlags(false), config.Options.PrintCommands)
+				result, err := compileAndCacheCFile(abspath, tmpdir, config.CFlags(false), isLLD, config.Options.PrintCommands)
 				job.result = result
 				return err
 			},
@@ -802,7 +802,7 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 			job := &compileJob{
 				description: "compile CGo file " + abspath,
 				run: func(job *compileJob) error {
-					result, err := compileAndCacheCFile(abspath, tmpdir, pkg.CFlags, config.Options.PrintCommands)
+					result, err := compileAndCacheCFile(abspath, tmpdir, pkg.CFlags, isLLD, config.Options.PrintCommands)
 					job.result = result
 					return err
 				},

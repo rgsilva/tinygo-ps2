@@ -56,7 +56,7 @@ import (
 //     depfile but without invalidating its name. For this reason, the depfile is
 //     written on each new compilation (even when it seems unnecessary). However, it
 //     could in rare cases lead to a stale file fetched from the cache.
-func compileAndCacheCFile(abspath, tmpdir string, cflags []string, printCommands func(string, ...string)) (string, error) {
+func compileAndCacheCFile(abspath, tmpdir string, cflags []string, lto bool, printCommands func(string, ...string)) (string, error) {
 	// Hash input file.
 	fileHash, err := hashFile(abspath)
 	if err != nil {
@@ -122,8 +122,13 @@ func compileAndCacheCFile(abspath, tmpdir string, cflags []string, printCommands
 		return "", err
 	}
 	depTmpFile.Close()
-	flags := append([]string{}, cflags...)                                                 // copy cflags
-	flags = append(flags, "-MD", "-MV", "-MTdeps", "-MF", depTmpFile.Name(), "-flto=thin") // autogenerate dependencies
+	flags := append([]string{}, cflags...)                                   // copy cflags
+	flags = append(flags, "-MD", "-MV", "-MTdeps", "-MF", depTmpFile.Name()) // autogenerate dependencies
+	if lto {
+		// Bitcode for LLD's link-time optimization; an external linker gets
+		// a plain object instead.
+		flags = append(flags, "-flto=thin")
+	}
 	flags = append(flags, "-c", "-o", objTmpFile.Name(), abspath)
 	if strings.ToLower(filepath.Ext(abspath)) == ".s" {
 		// If this is an assembly file (.s or .S, lowercase or uppercase), then
