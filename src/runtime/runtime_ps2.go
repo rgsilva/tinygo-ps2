@@ -3,6 +3,7 @@
 package runtime
 
 /*
+#cgo LDFLAGS: -ldebug
 #define _EE
 #include <kernel.h>
 
@@ -105,7 +106,12 @@ func sleepWDT(period uint8) {
 	// TODO
 }
 
+// exit reports the exit code on the serial port (the test harness maps it to
+// its own exit status: `tinygo test -target ps2`) and ends the program.
 func exit(code int) {
+	printstring("PS2GO-EXIT ")
+	printint32(int32(code))
+	printstring("\n")
 	C._exit(C.int(code))
 }
 
@@ -253,5 +259,22 @@ func printfmt(fmt string, a, b, c uintptr) {
 			continue
 		}
 		putchar(fmt[i])
+	}
+}
+
+// procPin/procUnpin (sync/atomic.Value) disable interrupts, like the other
+// baremetal targets. DIntr reports whether interrupts were on; a global is
+// safe here because it is only touched with interrupts off.
+var procPinnedIntr bool
+
+//go:linkname procPin sync/atomic.runtime_procPin
+func procPin() {
+	procPinnedIntr = C.DIntr() != 0
+}
+
+//go:linkname procUnpin sync/atomic.runtime_procUnpin
+func procUnpin() {
+	if procPinnedIntr {
+		C.EIntr()
 	}
 }

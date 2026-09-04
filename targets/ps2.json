@@ -8,18 +8,37 @@
 	"scheduler": "tasks",
 	"default-stack-size": 65536,
 	"gc-noptr-section": ".ps2go.noscan",
-	"linker": "ld.lld",
-	"rtlib": "compiler-rt",
+	"gc-globals-section": ".go.data",
+	"linker": "mips64r5900el-ps2-elf-gcc",
+	"rtlib": "",
 	"libc": "",
 	"cflags": [
 		"-mabi=n32",
 		"-mhard-float",
-		"-msingle-float"
+		"-msingle-float",
+		"-fno-pic",
+		"-nostdlibinc",
+		"-I{env:PS2DEV}/ee/mips64r5900el-ps2-elf/include",
+		"-I{env:PS2DEV}/ps2sdk/common/include",
+		"-I{env:PS2DEV}/ps2sdk/ee/include",
+		"-I{env:PS2DEV}/ps2sdk/ports/include/freetype2",
+		"-I{env:PS2DEV}/ps2sdk/ports/include/zlib",
+		"-I{env:PS2DEV}/gsKit/include"
 	],
 	"ldflags": [
-		"-mabi=n32"
+		"-mabi=n32",
+		"-mhard-float",
+		"-msingle-float",
+		"-Wl,-zmax-page-size=128",
+		"-Wl,--gc-sections",
+		"-Wl,-u,init_scr",
+		"-Wl,-u,scr_printf",
+		"-L{env:PS2DEV}/ps2sdk/ee/lib",
+		"-L{env:PS2DEV}/ps2sdk/ports/lib",
+		"-L{env:PS2DEV}/gsKit/lib"
 	],
-	"linkerscript": "",
+	"linkerscript": "targets/ps2.ld",
+	"emulator": "python3 {env:PS2GO_HARNESS}/ps2test.py --test --timeout 300 {}",
 	"extra-files": [
 		"src/runtime/asm_ps2.S",
 		"src/internal/task/task_stack_ps2.S"
