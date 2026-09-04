@@ -54,6 +54,7 @@ var (
 	scanList      *objHeader     // scanList is a singly linked list of heap objects that have been marked but not scanned
 	freeRanges    *freeRange     // freeRanges is a linked list of free block ranges
 	endBlock      gcBlock        // the block just past the end of the available space
+	gcHighWater   gcBlock        // the block just past the highest one allocated since the last sweep
 	gcTotalAlloc  uint64         // total number of bytes allocated
 	gcMallocs     uint64         // total number of allocations
 	gcNumGC       uint32         // total number of completed collection cycles
@@ -84,6 +85,19 @@ const blockStateEach = 1<<blocksPerStateByte - 1
 
 // The byte value of a block where every block is a 'tail' block.
 const blockStateByteAllTails = byte(blockStateTail) * blockStateEach
+
+// The sweep looks at a whole state word at a time where it can (see sweep).
+const (
+	stateWordBlocks   = blocksPerStateByte * unsafe.Sizeof(uint32(0)) // blocks per state word
+	stateWordLowMask  = uint32(blockStateEach) * 0x01010101           // the low bit of every block
+	stateWordAllTails = uint32(blockStateByteAllTails) * 0x01010101
+)
+
+// stateWordBelow returns the state word covering the stateWordBlocks blocks
+// below b. b must be a multiple of stateWordBlocks.
+func (b gcBlock) stateWordBelow() *uint32 {
+	return (*uint32)(unsafe.Add(metadataStart, (b-gcBlock(stateWordBlocks))/blocksPerStateByte))
+}
 
 // String returns a human-readable version of the block state, for debugging.
 func (s blockState) String() string {
@@ -378,7 +392,8 @@ func calculateHeapAddresses() {
 
 	// Allocate some memory to keep 2 bits of information about every block.
 	metadataSize := (totalSize + blocksPerStateByte*bytesPerBlock) / (1 + blocksPerStateByte*bytesPerBlock)
-	metadataStart = unsafe.Pointer(heapEnd - metadataSize)
+	// Word-aligned so that the sweep can look at a whole state word at a time.
+	metadataStart = unsafe.Pointer((heapEnd - metadataSize) &^ (unsafe.Sizeof(uint32(0)) - 1))
 
 	// Use the rest of the available memory as heap.
 	numBlocks := (uintptr(metadataStart) - heapStart) / bytesPerBlock
@@ -472,6 +487,9 @@ func alloc(size uintptr, layout unsafe.Pointer) unsafe.Pointer {
 	// Set the block states.
 	block := blockFromAddr(uintptr(pointer))
 	i := block + gcBlock(neededBlocks) - 1
+	if i+1 > gcHighWater {
+		gcHighWater = i + 1
+	}
 	i.setState(blockStateHead)
 	for i != block {
 		i--
@@ -732,14 +750,35 @@ func sweep() uintptr {
 	// Discard the old free ranges list.
 	freeRanges = nil
 
-	// Scan backwards through the block metadata.
-	block := endBlock
+	// Scan backwards through the block metadata, starting below the highest
+	// block allocated since the last sweep: nothing above it has been touched
+	// (free ranges are best-fit and carved from their low end, so the big
+	// range at the top is used last), and that part joins the first free
+	// range without looking at its metadata. Whole state words are handled at
+	// once where possible. Together this keeps the cost of a collection
+	// proportional to what the program uses, not to the heap size.
+	block := gcHighWater
+	freeEnd := endBlock
 	var freeBlocks uintptr
 	for {
 		// Scan backwards until we find a marked head.
 		// Free the blocks as we go.
-		freeEnd := block
-		for block > 0 && (block-1).state() != blockStateMark {
+		for block > 0 {
+			if block%gcBlock(stateWordBlocks) == 0 && block >= gcBlock(stateWordBlocks) {
+				// A marked head has both of its bits set. If no block in this
+				// word has, all of them are freed (or already free) at once.
+				w := block.stateWordBelow()
+				if v := *w; v&(v>>blocksPerStateByte)&stateWordLowMask == 0 {
+					if v != 0 {
+						*w = 0
+					}
+					block -= gcBlock(stateWordBlocks)
+					continue
+				}
+			}
+			if (block - 1).state() == blockStateMark {
+				break
+			}
 			block--
 			block.free()
 		}
@@ -748,6 +787,11 @@ func sweep() uintptr {
 			// Insert the freed blocks.
 			freeBlocks += freeLen
 			insertFreeRange(block.pointer(), freeLen)
+		}
+		if freeEnd == endBlock {
+			// The first free range found from the top: everything above the
+			// highest live object is free.
+			gcHighWater = block
 		}
 
 		if block == 0 {
@@ -759,10 +803,19 @@ func sweep() uintptr {
 		block--
 		block.unmark()
 
-		// Skip the tail.
-		for block > 0 && (block-1).state() == blockStateTail {
+		// Skip the tail, a word at a time inside big objects.
+		for block > 0 {
+			if block%gcBlock(stateWordBlocks) == 0 && block >= gcBlock(stateWordBlocks) &&
+				*block.stateWordBelow() == stateWordAllTails {
+				block -= gcBlock(stateWordBlocks)
+				continue
+			}
+			if (block - 1).state() != blockStateTail {
+				break
+			}
 			block--
 		}
+		freeEnd = block
 	}
 
 	if gcDebug {
