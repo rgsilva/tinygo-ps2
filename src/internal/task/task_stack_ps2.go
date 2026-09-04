@@ -7,15 +7,17 @@ import "unsafe"
 // PlayStation 2 EE: MIPS N32 ABI (32-bit pointers, 64-bit GPRs, single-float
 // FPU). The saved context differs from the o32 one in task_stack_mipsx.go:
 // the callee-saved GPRs are 64 bits wide and must be saved whole (sd/ld), the
-// stack pointer must stay 16-byte aligned, and the single-precision FPU
+// stack pointer must stay 16-byte aligned, the single-precision FPU
 // registers f20-f31 are callee-saved (LLVM saves the even ones for N32
-// single-float, gcc all of them; saving all twelve covers both).
+// single-float, gcc all of them; saving all twelve covers both), and gp is
+// callee-saved too: in non-PIC N32 code LLVM uses it as an ordinary register
+// once optimizing, so it must be part of the context.
 
 var systemStack uintptr
 
-// calleeSavedRegs is the register context tinygo_swapTask (loader/asm_mipsx.S
-// in the demos repo, task_stack_ps2.S here) pushes and pops. The layout must
-// match the assembly exactly. Total size 128 bytes (a multiple of 16).
+// calleeSavedRegs is the register context tinygo_swapTask (task_stack_ps2.S)
+// pushes and pops. The layout must match the assembly exactly. Total size 144
+// bytes (a multiple of 16).
 type calleeSavedRegs struct {
 	s0 uint64 // 0
 	s1 uint64 // 8
@@ -31,13 +33,20 @@ type calleeSavedRegs struct {
 	f20, f21, f22, f23 uint32 // 80..92
 	f24, f25, f26, f27 uint32 // 96..108
 	f28, f29, f30, f31 uint32 // 112..124
+	gp                 uint64 // 128
+	_                  uint64 // 136 (padding to a multiple of 16)
 }
+
+// getgp returns the current gp register (assembly, tinygo_getgp).
+//
+//export tinygo_getgp
+func getgp() uintptr
 
 // archInit runs architecture-specific setup for the goroutine startup.
 func (s *state) archInit(r *calleeSavedRegs, fn uintptr, args unsafe.Pointer) {
 	// Store the initial sp for the startTask function (implemented in assembly).
 	// r sits at the top of the stack allocation; the allocation is 16-byte
-	// aligned and the struct is 128 bytes, so sp is 16-byte aligned as N32
+	// aligned and the struct is 144 bytes, so sp is 16-byte aligned as N32
 	// requires.
 	s.sp = uintptr(unsafe.Pointer(r))
 	if s.sp&15 != 0 {
@@ -52,6 +61,9 @@ func (s *state) archInit(r *calleeSavedRegs, fn uintptr, args unsafe.Pointer) {
 	r.ra = uint64(uintptr(unsafe.Pointer(&startTask)))
 	r.s0 = uint64(fn)
 	r.s1 = uint64(uintptr(args))
+	// gp is a program-wide constant set by crt0; a new goroutine starts with
+	// the current one.
+	r.gp = uint64(getgp())
 }
 
 func (s *state) resume() {

@@ -2,14 +2,16 @@
 //
 // Differences from task_stack_mipsx.S (o32):
 //   - callee-saved GPRs s0-s7, fp, ra are 64 bits wide: sd/ld, 8-byte slots;
-//   - the stack pointer must stay 16-byte aligned (frame = 128 bytes);
+//   - the stack pointer must stay 16-byte aligned (frame = 144 bytes);
 //   - the single-precision FPU registers f20-f31 are callee-saved and saved
 //     with swc1/lwc1 (LLVM's N32 single-float CSR list has the even ones,
 //     gcc's all twelve; save all twelve);
-//   - gp is not touched: the program is non-PIC and gp is a constant set by
-//     crt0, so leaving it alone preserves it (saving it would load 0 from
-//     the initial frame of a new goroutine).
-// The frame layout must match calleeSavedRegs in task_stack_ps2.go.
+//   - gp is saved too: in non-PIC N32 code LLVM treats it as an ordinary
+//     callee-saved register once optimizing (it is a constant set by crt0
+//     only at -O0), so a switch must restore the resumed task's value. The
+//     initial frame of a new goroutine gets the current gp (archInit).
+// The frame layout must match calleeSavedRegs in task_stack_ps2.go:
+//   0..72 s0-s7, fp, ra; 80..124 f20-f31; 128 gp; 136 padding.
 
 .set noreorder
 
@@ -37,7 +39,7 @@ tinygo_startTask:
 tinygo_swapTask:
     // a0 = newStack uintptr
     // a1 = oldStack *uintptr
-    addiu $sp, $sp, -128
+    addiu $sp, $sp, -144
     sd    $s0,   0($sp)
     sd    $s1,   8($sp)
     sd    $s2,  16($sp)
@@ -60,6 +62,7 @@ tinygo_swapTask:
     swc1  $f29, 116($sp)
     swc1  $f30, 120($sp)
     swc1  $f31, 124($sp)
+    sd    $gp,  128($sp)
 
     // Save the current stack pointer in *oldStack (32-bit pointer).
     sw    $sp, 0($a1)
@@ -89,7 +92,8 @@ tinygo_swapTask:
     lwc1  $f29, 116($sp)
     lwc1  $f30, 120($sp)
     lwc1  $f31, 124($sp)
-    addiu $sp, $sp, 128
+    ld    $gp,  128($sp)
+    addiu $sp, $sp, 144
 
     // Return into the task (tinygo_startTask on the first switch).
     jr    $ra
