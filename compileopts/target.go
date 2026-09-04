@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"runtime"
 	"strings"
 
@@ -44,6 +45,9 @@ type TargetSpec struct {
 	AutoStackSize    *bool    `json:"automatic-stack-size,omitempty"` // Determine stack size automatically at compile time.
 	DefaultStackSize uint64   `json:"default-stack-size,omitempty"`   // Default stack size if the size couldn't be determined at compile time.
 	GCNoPtrSection   string   `json:"gc-noptr-section,omitempty"`     // Section for globals that cannot contain pointers, kept out of the conservative GC's globals scan.
+	GCGlobalsSection string   `json:"gc-globals-section,omitempty"`   // Section for the remaining mutable globals, the range the GC scans (bracketed by the linker script).
+
+	MissingEnv       []string `json:"-"` // {env:NAME} placeholders whose variable is not set (see CheckEnv)
 	CFlags           []string `json:"cflags,omitempty"`
 	LDFlags          []string `json:"ldflags,omitempty"`
 	LinkerScript     string   `json:"linkerscript,omitempty"`
@@ -230,6 +234,7 @@ func LoadTarget(options *Options) (*TargetSpec, error) {
 		spec.ExtraFiles = append(spec.ExtraFiles, "src/internal/task/task_asyncify_wasm.S")
 	}
 
+	spec.expandEnv()
 	return spec, nil
 }
 
@@ -581,4 +586,42 @@ func (spec *TargetSpec) LookupGDB() (string, error) {
 		}
 	}
 	return "", errors.New("no gdb found configured in the target specification (" + strings.Join(spec.GDB, ", ") + ")")
+}
+
+// envPlaceholder matches {env:NAME} in a target JSON string.
+var envPlaceholder = regexp.MustCompile(`\{env:([A-Za-z_][A-Za-z0-9_]*)\}`)
+
+// expandEnv replaces {env:NAME} placeholders in the target's compiler, linker
+// and emulator settings with the environment variable NAME. It lets a target
+// refer to an SDK installed outside the TinyGo tree. A variable that is not
+// set is reported by CheckEnv, at build time: listing targets must still
+// work without the SDK.
+func (spec *TargetSpec) expandEnv() {
+	expand := func(s string) string {
+		return envPlaceholder.ReplaceAllStringFunc(s, func(m string) string {
+			name := m[len("{env:") : len(m)-1]
+			value, ok := os.LookupEnv(name)
+			if !ok {
+				spec.MissingEnv = append(spec.MissingEnv, name+" (used in "+s+")")
+			}
+			return value
+		})
+	}
+	for _, list := range [][]string{spec.CFlags, spec.LDFlags} {
+		for i, s := range list {
+			list[i] = expand(s)
+		}
+	}
+	spec.Linker = expand(spec.Linker)
+	// The emulator is expanded when it is used (Config.Emulator): running is
+	// optional, and its variables must not be required for building.
+}
+
+// CheckEnv returns an error naming the first environment variable the target
+// refers to with {env:NAME} that is not set.
+func (spec *TargetSpec) CheckEnv() error {
+	if len(spec.MissingEnv) == 0 {
+		return nil
+	}
+	return fmt.Errorf("target needs the environment variable %s", spec.MissingEnv[0])
 }

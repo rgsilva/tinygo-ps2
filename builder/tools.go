@@ -57,9 +57,20 @@ func runCCompiler(flags ...string) error {
 
 // link invokes a linker with the given name and flags.
 func link(linker string, flags ...string) error {
-	// We only support LLD.
 	if linker != "ld.lld" && linker != "wasm-ld" {
-		return fmt.Errorf("unexpected: linker %s should be ld.lld or wasm-ld", linker)
+		// An external linker driver named by the target (for example the gcc
+		// of a platform SDK), found in PATH. Its output is shown as is.
+		name, err := exec.LookPath(linker)
+		if err != nil {
+			return fmt.Errorf("linker %s not found in PATH", linker)
+		}
+		cmd := exec.Command(name, flags...)
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to run linker %s: %w", linker, err)
+		}
+		return nil
 	}
 
 	var cmd *exec.Cmd

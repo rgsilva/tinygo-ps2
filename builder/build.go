@@ -100,6 +100,9 @@ type packageAction struct {
 // The error value may be of type *MultiError. Callers will likely want to check
 // for this case and print such errors individually.
 func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildResult, error) {
+	if err := config.Target.CheckEnv(); err != nil {
+		return BuildResult{}, err
+	}
 	// Read the build ID of the tinygo binary.
 	// Used as a cache key for package builds.
 	compilerBuildID, err := ReadBuildID()
@@ -700,6 +703,12 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 	// First add all jobs necessary to build this object file, then afterwards
 	// run all jobs in parallel as far as possible.
 
+	// Whether the linker is one of the bundled LLD flavors. Anything else is
+	// an external linker driver (for example the gcc of a platform SDK) that
+	// gets a real object file instead of bitcode, and neither LLD's LTO
+	// options nor its argument conventions.
+	isLLD := config.Target.Linker == "ld.lld" || config.Target.Linker == "wasm-ld"
+
 	// Add job to write the output object file.
 	objfile := filepath.Join(tmpdir, "main.o")
 	outputObjectFileJob := &compileJob{
@@ -707,6 +716,14 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 		dependencies: []*compileJob{programJob},
 		result:       objfile,
 		run: func(*compileJob) error {
+			if !isLLD {
+				llvmBuf, err := machine.EmitToMemoryBuffer(mod, llvm.ObjectFile)
+				if err != nil {
+					return err
+				}
+				defer llvmBuf.Dispose()
+				return os.WriteFile(objfile, llvmBuf.Bytes(), 0666)
+			}
 			llvmBuf := llvm.WriteThinLTOBitcodeToMemoryBuffer(mod)
 			defer llvmBuf.Dispose()
 			return os.WriteFile(objfile, llvmBuf.Bytes(), 0666)
@@ -796,7 +813,10 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 
 	// Linker flags from CGo lines:
 	//     #cgo LDFLAGS: foo
-	if len(lprogram.LDFlags) > 0 {
+	// With an external linker these are mostly -l flags for static archives,
+	// which must come after the objects that use them, so they are added
+	// after the object files in that case (see the link job).
+	if len(lprogram.LDFlags) > 0 && isLLD {
 		ldflags = append(ldflags, lprogram.LDFlags...)
 	}
 
@@ -827,8 +847,8 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 			// ld.lld is also used on Linux.
 			ldflags = append(ldflags, "--strip-debug")
 		} else {
-			// Other linkers may have different flags.
-			return result, errors.New("cannot remove debug information: unknown linker: " + config.Target.Linker)
+			// An external linker driver (gcc-like): pass it on to its linker.
+			ldflags = append(ldflags, "-Wl,--strip-debug")
 		}
 	}
 
@@ -843,6 +863,15 @@ func Build(pkgName, outpath, tmpdir string, config *compileopts.Config) (BuildRe
 					return errors.New("dependency without result: " + dependency.description)
 				}
 				ldflags = append(ldflags, dependency.result)
+			}
+			if !isLLD {
+				// External linker: objects first, then the libraries from
+				// #cgo LDFLAGS lines, and none of the LLD-only options.
+				ldflags = append(ldflags, lprogram.LDFlags...)
+				if config.Options.PrintCommands != nil {
+					config.Options.PrintCommands(config.Target.Linker, ldflags...)
+				}
+				return link(config.Target.Linker, ldflags...)
 			}
 			ldflags = append(ldflags, "-mllvm", "-mcpu="+config.CPU())
 			ldflags = append(ldflags, "-mllvm", "-mattr="+config.Features()) // needed for MIPS softfloat

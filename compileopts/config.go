@@ -653,6 +653,18 @@ func (c *Config) Emulator(format, binary string) ([]string, error) {
 	var emulator []string
 	for _, s := range parts {
 		s = strings.ReplaceAll(s, "{root}", goenv.Get("TINYGOROOT"))
+		var missing string
+		s = envPlaceholder.ReplaceAllStringFunc(s, func(m string) string {
+			name := m[len("{env:") : len(m)-1]
+			value, ok := os.LookupEnv(name)
+			if !ok && missing == "" {
+				missing = name
+			}
+			return value
+		})
+		if missing != "" {
+			return nil, fmt.Errorf("the emulator for this target needs the environment variable %s", missing)
+		}
 		// Allow replacement of what's usually /tmp except notably Windows.
 		s = strings.ReplaceAll(s, "{tmpDir}", os.TempDir())
 		s = strings.ReplaceAll(s, "{"+format+"}", binary)
