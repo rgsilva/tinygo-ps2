@@ -340,8 +340,13 @@ func (c *Config) CFlags(libclang bool) []string {
 		// stdbool.h, stdint.h, float.h, etc.
 		// It is left empty if we're using an external compiler (that already
 		// knows these headers).
+		// Some toolchains in the clang driver (Generic_ELF, used for triples
+		// such as mips64el-unknown-none) do not add the resource directory's
+		// headers to the search path themselves, so name it explicitly, after
+		// the user's directories.
 		cflags = append(cflags,
 			"-resource-dir="+resourceDir,
+			"-idirafter", filepath.Join(resourceDir, "include"),
 		)
 	}
 	cflags = append(cflags, c.LibcCFlags()...)
