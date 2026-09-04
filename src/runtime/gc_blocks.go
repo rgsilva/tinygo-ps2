@@ -452,8 +452,10 @@ func setHeapEnd(newHeapEnd uintptr) {
 	heapEnd = newHeapEnd
 	oldEndBlock := endBlock
 	calculateHeapAddresses()
-	memcpy(metadataStart, oldMetadataStart, oldMetadataSize)
-	rebuildHeadIndex() // the states moved, the index is in a new place
+	// Copy the block states only: the head index that followed them would
+	// land in the (zero, free) states of the new blocks. It is rebuilt below.
+	memcpy(metadataStart, oldMetadataStart, (uintptr(oldEndBlock)+blocksPerStateByte-1)/blocksPerStateByte)
+	rebuildHeadIndex()
 
 	// Note: the memcpy above assumes the heap grows enough so that the new
 	// metadata does not overlap the old metadata. If that isn't true, memmove
