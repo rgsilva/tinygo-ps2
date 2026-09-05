@@ -939,18 +939,28 @@ func (f *cgoFile) makeASTRecordType(cursor C.GoCXCursor, pos token.Pos) *elabora
 	var bitfieldList []bitfieldInfo
 	inBitfield := false
 	bitfieldNum := 0
+	layout := &structLayout{}
 	ref := storedRefs.Put(struct {
 		fieldList    *ast.FieldList
 		file         *cgoFile
 		inBitfield   *bool
 		bitfieldNum  *int
 		bitfieldList *[]bitfieldInfo
-	}{fieldList, f, &inBitfield, &bitfieldNum, &bitfieldList})
+		layout       *structLayout
+	}{fieldList, f, &inBitfield, &bitfieldNum, &bitfieldList, layout})
 	defer storedRefs.Remove(ref)
 	C.tinygo_clang_visitChildren(cursor, C.CXCursorVisitor(C.tinygo_clang_struct_visitor), C.CXClientData(ref))
 	renameFieldKeywords(fieldList)
 	switch C.tinygo_clang_getCursorKind(cursor) {
 	case C.CXCursor_StructDecl:
+		// Pad the end so that the Go struct has the C size (an aligned(N)
+		// attribute rounds it up).
+		if sizeInBytes := int64(C.clang_Type_getSizeOf(C.tinygo_clang_getCursorType(cursor))); sizeInBytes > 0 && layout.maxAlign > 0 {
+			goSize := (layout.nextOffset + layout.maxAlign - 1) / layout.maxAlign * layout.maxAlign
+			if sizeInBytes > goSize {
+				fieldList.List = append(fieldList.List, paddingField(sizeInBytes-goSize, pos))
+			}
+		}
 		return &elaboratedTypeInfo{
 			typeExpr: &ast.StructType{
 				Struct: pos,
@@ -1006,12 +1016,14 @@ func tinygo_clang_struct_visitor(c, parent C.GoCXCursor, client_data C.CXClientD
 		inBitfield   *bool
 		bitfieldNum  *int
 		bitfieldList *[]bitfieldInfo
+		layout       *structLayout
 	})
 	fieldList := passed.fieldList
 	f := passed.file
 	inBitfield := passed.inBitfield
 	bitfieldNum := passed.bitfieldNum
 	bitfieldList := passed.bitfieldList
+	layout := passed.layout
 	pos := f.getCursorPosition(c)
 	switch cursorKind := C.tinygo_clang_getCursorKind(c); cursorKind {
 	case C.CXCursor_FieldDecl:
@@ -1076,6 +1088,20 @@ func tinygo_clang_struct_visitor(c, parent C.GoCXCursor, client_data C.CXClientD
 		return C.CXChildVisit_Continue
 	}
 	*inBitfield = false
+	// Go lays the fields out naturally. Where C put this field further
+	// along (a field with an aligned(N) attribute, as in gsKit's GSGLOBAL),
+	// insert the difference as padding so that the offsets match.
+	goAlign := alignOf / 8
+	if goAlign > 8 {
+		goAlign = 8
+	}
+	if natural := (layout.nextOffset + goAlign - 1) / goAlign * goAlign; offsetof/8 > natural {
+		fieldList.List = append(fieldList.List, paddingField(offsetof/8-natural, pos))
+	}
+	layout.nextOffset = offsetof/8 + int64(C.clang_Type_getSizeOf(typ))
+	if goAlign > layout.maxAlign {
+		layout.maxAlign = goAlign
+	}
 	field.Names = []*ast.Ident{
 		{
 			NamePos: pos,
@@ -1084,6 +1110,25 @@ func tinygo_clang_struct_visitor(c, parent C.GoCXCursor, client_data C.CXClientD
 	}
 	fieldList.List = append(fieldList.List, field)
 	return C.CXChildVisit_Continue
+}
+
+// structLayout tracks where Go's natural layout of a struct has got to, in
+// bytes, while its fields are visited.
+type structLayout struct {
+	nextOffset int64 // end of the last field
+	maxAlign   int64 // alignment of the struct in Go
+}
+
+// paddingField is a blank [n]byte field.
+func paddingField(n int64, pos token.Pos) *ast.Field {
+	return &ast.Field{
+		Names: []*ast.Ident{{NamePos: pos, Name: "_"}},
+		Type: &ast.ArrayType{
+			Lbrack: pos,
+			Len:    &ast.BasicLit{ValuePos: pos, Kind: token.INT, Value: strconv.FormatInt(n, 10)},
+			Elt:    &ast.Ident{NamePos: pos, Name: "byte"},
+		},
+	}
 }
 
 //export tinygo_clang_inclusion_visitor

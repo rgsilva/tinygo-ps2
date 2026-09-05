@@ -169,3 +169,10 @@ type _Cgo_struct_packed_ok struct {
 	b _Cgo_uchar
 	c _Cgo_ushort
 }
+type _Cgo_struct_aligned_field struct {
+	a _Cgo_int
+	_ [60]byte
+	p unsafe.Pointer
+	b _Cgo_int
+	_ [56]byte
+}

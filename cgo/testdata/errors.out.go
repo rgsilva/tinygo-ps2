@@ -89,4 +89,7 @@ type _Cgo_point_t = _Cgo_struct_point_t
 const _Cgo_SOME_CONST_3 = 1234
 const _Cgo_SOME_PARAM_CONST_valid = 3 + 4
 
-type _Cgo_struct_packed_bad struct{ a _Cgo_char }
+type _Cgo_struct_packed_bad struct {
+	a _Cgo_char
+	_ [2]byte
+}

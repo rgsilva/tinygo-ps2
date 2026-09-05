@@ -35,6 +35,14 @@ struct packed_ok {
 	unsigned short c;
 } __attribute__((packed));
 
+// A field with an aligned(N) attribute moves itself and everything after it
+// (and rounds the size up); Go gets explicit padding.
+struct aligned_field {
+	int a;
+	void *p __attribute__((aligned(64)));
+	int b;
+};
+
 // Unions.
 typedef union {
 	// Union should be treated as a struct.
@@ -182,3 +190,6 @@ func accessUnion() {
 
 // Packed struct with naturally aligned fields.
 var _ C.struct_packed_ok
+
+// Struct with an aligned field.
+var _ C.struct_aligned_field
