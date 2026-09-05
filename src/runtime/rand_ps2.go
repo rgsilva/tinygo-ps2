@@ -15,9 +15,8 @@ import "C"
 // The PS2 has no hardware random number generator. hardwareRand instead
 // stirs what varies into a splitmix64 state: the bus clock timer, the COP0
 // Count register and the wall-clock offset once the RTC has been read. That
-// seeds the maps and math/rand differently on every boot of a console (and
-// on every run of an emulator once the clock is synced); it is not a source
-// of cryptographic entropy, so crypto/rand stays without a Reader.
+// seeds the maps and math/rand differently on every boot. Not cryptographic
+// entropy.
 var randState uint64
 
 func hardwareRand() (n uint64, ok bool) {
